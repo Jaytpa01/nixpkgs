@@ -10973,6 +10973,12 @@
     githubId = 5579359;
     name = "Jason Yundt";
   };
+  jaytpa01 = {
+    name = "Jay Parry";
+    email = "jaytpa01+nixpkgs@gmail.com";
+    github = "Jaytpa01";
+    githubId = 58618470;
+  };
   jb55 = {
     email = "jb55@jb55.com";
     github = "jb55";

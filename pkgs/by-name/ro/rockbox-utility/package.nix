@@ -4,77 +4,94 @@
   fetchurl,
   cryptopp,
   libusb1,
-  makeWrapper,
   pkg-config,
   qt5,
+  cmake,
+  makeDesktopItem,
+  copyDesktopItems,
   withEspeak ? false,
   espeak ? null,
 }:
 
 stdenv.mkDerivation rec {
   pname = "rockbox-utility";
-  version = "1.4.1";
+  version = "1.5.1";
 
   src = fetchurl {
     url = "https://download.rockbox.org/rbutil/source/RockboxUtility-v${version}-src.tar.bz2";
-    hash = "sha256-PhlJ+fNY4/Qjoc72zV9WO+kNqF5bZQuwOh4EpAJwqX4=";
+    hash = "sha256-guNO11a0d30RexPEAAQGIgV9W17zgTjZ/LNz/oUn4HM=";
   };
 
   nativeBuildInputs = [
-    makeWrapper
     pkg-config
-    qt5.qmake
     qt5.wrapQtAppsHook
+    cmake
+    copyDesktopItems
   ];
+
+  # don't wrap qt apps automatically, we do that manually in the preFixup hook
+  dontWrapQtApps = true;
 
   buildInputs = [
     cryptopp
     libusb1
-    qt5.qtbase
     qt5.qttools
+    qt5.qtmultimedia
   ] ++ lib.optional withEspeak espeak;
 
-  postPatch = ''
-    sed -i rbutil/rbutilqt/rbutilqt.pro \
-        -e '/^lrelease.commands =/ s|$$\[QT_INSTALL_BINS\]/lrelease -silent|${lib.getDev qt5.qttools}/bin/lrelease|'
+  # The RockboxUtility source archive that we fetch from is actually just a subset of the entire rockbox repo.
+  # The utils/CMakesLists.txt references directories and libraries that aren't included in our archive.
+  # Lets remove them so we can actually build the project without errors
+  prePatch = ''
+    cd utils
+    sed -i '/add_subdirectory(themeeditor)/d' CMakeLists.txt
+    sed -i '/add_library(skin_parser/,/target_compile_definitions(skin_parser/d' CMakeLists.txt
   '';
-
-  preConfigure = ''
-    cd rbutil/rbutilqt
-    lrelease rbutilqt.pro
-  '';
-
-  # Workaround build failure on -fno-common toolchains like upstream
-  # gcc-10. Otherwise build fails as:
-  #   ld: libmkimxboot.a(elf.c.o):utils/imxtools/sbtools/misc.h:43: multiple definition of `g_nr_keys';
-  #     libmkimxboot.a(mkimxboot.c.o):utils/imxtools/sbtools/misc.h:43: first defined here
-  # TODO: try to remove with 1.5.1 update.
-  env.NIX_CFLAGS_COMPILE = "-fcommon";
 
   installPhase = ''
     runHook preInstall
 
+    cd rbutilqt
     install -Dm755 RockboxUtility $out/bin/rockboxutility
     ln -s $out/bin/rockboxutility $out/bin/RockboxUtility
-    wrapProgram $out/bin/rockboxutility \
-    ${lib.optionalString withEspeak ''
-      --prefix PATH : ${espeak}/bin
-    ''}
+
+    install -Dm644 ../../../docs/logo/rockbox-clef.svg \
+    $out/share/icons/hicolor/scalable/apps/rockbox-clef.svg
 
     runHook postInstall
   '';
 
-  # `make build/rcc/qrc_rbutilqt-lang.cpp` fails with
-  #      RCC: Error in 'rbutilqt-lang.qrc': Cannot find file 'lang/rbutil_cs.qm'
-  # Do not add `lrelease rbutilqt.pro` into preConfigure, otherwise `make lrelease`
-  # may clobber the files read by the parallel `make build/rcc/qrc_rbutilqt-lang.cpp`.
-  enableParallelBuilding = false;
+  preFixup = ''
+    wrapQtApp $out/bin/rockboxutility \
+    ${lib.optionalString withEspeak ''
+      --prefix PATH : ${espeak}/bin
+    ''}
+  '';
+
+  desktopItems = [
+    (makeDesktopItem {
+      name = "rockbox-utility";
+      desktopName = "Rockbox Utility";
+      comment = "Rockbox Installer and Maintenance Tool";
+      exec = "RockboxUtility";
+      type = "Application";
+      icon = "rockbox-clef";
+      categories = [ "Utility" ];
+      startupNotify = true;
+      terminal = false;
+    })
+  ];
 
   meta = with lib; {
     homepage = "https://www.rockbox.org";
     description = "Open source firmware for digital music players";
+    longDescription = ''
+      Rockbox is a free replacement firmware for digital music players.
+      This is the automated installer tool for Rockbox.
+    '';
+    changelog = "https://www.rockbox.org/wiki/RockboxUtility#Change_Log";
     license = licenses.gpl2Plus;
-    maintainers = with maintainers; [ ];
+    maintainers = with maintainers; [ jaypta01 ];
     mainProgram = "RockboxUtility";
     platforms = platforms.linux;
   };
